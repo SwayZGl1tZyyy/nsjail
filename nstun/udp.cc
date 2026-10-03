@@ -16,6 +16,7 @@
 #include "logs.h"
 #include "macros.h"
 #include "policy.h"
+#include "route.h"
 #include "tun.h"
 #include "udp_peer.h"
 
@@ -436,6 +437,17 @@ void handle_udp4(Context* ctx, const ip4_hdr* ip, std::span<const uint8_t> paylo
 			LOG_W(
 			    "Maximum number of UDP flows (%zu) reached, dropping", NSTUN_MAX_FLOWS);
 			return;
+		}
+
+		if (rule.action == NSTUN_ACTION_ALLOW) {
+			RouteLocality locality = route_locality4(ip->daddr);
+			if (locality != RouteLocality::NOT_LOCAL) {
+				LOG_W("Dropping direct UDP flow to %s: %s",
+				    ip4_to_string(ip->daddr).c_str(),
+				    locality == RouteLocality::LOCAL ? "host-local route"
+				                                      : "route lookup failed");
+				return;
+			}
 		}
 
 		auto flow_ptr = std::make_unique<UdpFlow>();
@@ -929,6 +941,17 @@ void handle_udp6(Context* ctx, const ip6_hdr* ip, std::span<const uint8_t> paylo
 			LOG_W("Maximum number of IPv6 UDP flows (%zu) reached, dropping",
 			    NSTUN_MAX_FLOWS);
 			return;
+		}
+
+		if (rule.action == NSTUN_ACTION_ALLOW) {
+			RouteLocality locality = route_locality6(ip->daddr);
+			if (locality != RouteLocality::NOT_LOCAL) {
+				LOG_W("Dropping direct IPv6 UDP flow to %s: %s",
+				    ip6_to_string(ip->daddr).c_str(),
+				    locality == RouteLocality::LOCAL ? "host-local route"
+				                                      : "route lookup failed");
+				return;
+			}
 		}
 
 		auto flow_ptr = std::make_unique<UdpFlow>();

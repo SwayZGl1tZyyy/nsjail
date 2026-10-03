@@ -15,6 +15,7 @@
 #include "logs.h"
 #include "macros.h"
 #include "policy.h"
+#include "route.h"
 #include "tun.h"
 #include "util.h"
 
@@ -885,6 +886,17 @@ void handle_tcp4(Context* ctx, const ip4_hdr* ip, std::span<const uint8_t> paylo
 			return;
 		}
 
+		if (rule.action == NSTUN_ACTION_ALLOW) {
+			RouteLocality locality = route_locality4(ip->daddr);
+			if (locality != RouteLocality::NOT_LOCAL) {
+				LOG_W("Dropping direct TCP flow to %s: %s",
+				    ip4_to_string(ip->daddr).c_str(),
+				    locality == RouteLocality::LOCAL ? "host-local route"
+				                                      : "route lookup failed");
+				return;
+			}
+		}
+
 		/* All checks passed: open a socket and connect to the destination. */
 		int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
 		if (fd == -1) {
@@ -1320,6 +1332,17 @@ void handle_tcp6(Context* ctx, const ip6_hdr* ip, std::span<const uint8_t> paylo
 			LOG_D("IPv6 TCP connect to port %u rejected by policy", dest_port);
 			tcp_send_rst6(ctx, key6, 0, seq + 1);
 			return;
+		}
+
+		if (rule.action == NSTUN_ACTION_ALLOW) {
+			RouteLocality locality = route_locality6(ip->daddr);
+			if (locality != RouteLocality::NOT_LOCAL) {
+				LOG_W("Dropping direct IPv6 TCP flow to %s: %s",
+				    ip6_to_string(ip->daddr).c_str(),
+				    locality == RouteLocality::LOCAL ? "host-local route"
+				                                      : "route lookup failed");
+				return;
+			}
 		}
 
 		bool use_proxy = (rule.action == NSTUN_ACTION_ENCAP_SOCKS5 ||

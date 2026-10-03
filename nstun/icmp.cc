@@ -13,6 +13,7 @@
 #include "logs.h"
 #include "macros.h"
 #include "policy.h"
+#include "route.h"
 #include "tun.h"
 
 namespace nstun {
@@ -218,6 +219,17 @@ void handle_icmp6(Context* ctx, const ip6_hdr* ip, std::span<const uint8_t> payl
 					return;
 				}
 
+				if (rule.action == NSTUN_ACTION_ALLOW) {
+					RouteLocality locality = route_locality6(ip->daddr);
+					if (locality != RouteLocality::NOT_LOCAL) {
+						LOG_W("Dropping direct ICMPv6 flow to %s: %s",
+						    ip6_to_string(ip->daddr).c_str(),
+						    locality == RouteLocality::LOCAL ? "host-local route"
+						                                      : "route lookup failed");
+						return;
+					}
+				}
+
 				int fd = socket(AF_INET6, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
 				    IPPROTO_ICMPV6);
 				if (fd == -1) {
@@ -337,6 +349,17 @@ void handle_icmp4(Context* ctx, const ip4_hdr* ip, std::span<const uint8_t> payl
 					    "Maximum number of ICMP flows (%zu) reached, dropping",
 					    NSTUN_MAX_FLOWS);
 					return;
+				}
+
+				if (rule.action == NSTUN_ACTION_ALLOW) {
+					RouteLocality locality = route_locality4(ip->daddr);
+					if (locality != RouteLocality::NOT_LOCAL) {
+						LOG_W("Dropping direct ICMP flow to %s: %s",
+						    ip4_to_string(ip->daddr).c_str(),
+						    locality == RouteLocality::LOCAL ? "host-local route"
+						                                      : "route lookup failed");
+						return;
+					}
 				}
 
 				int fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
